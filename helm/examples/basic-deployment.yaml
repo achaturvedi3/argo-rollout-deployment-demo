@@ -1,0 +1,44 @@
+# Basic Deployment Configuration
+# This is a minimal configuration for deploying the canary-demo application
+
+namespace: default
+
+image:
+  repository: 123456789012.dkr.ecr.us-east-1.amazonaws.com/canary-demo
+  tag: "v1.0.0"
+  pullPolicy: Always
+
+rollout:
+  replicas: 2
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+  hosts:
+    - host: canary-demo.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+aws:
+  region: us-east-1
+  vpc:
+    subnets: "subnet-12345678,subnet-87654321"
+
+externalDns:
+  enabled: true
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: canary-demo.example.com
+    external-dns.alpha.kubernetes.io/ttl: "300"
+
+route53:
+  hostedZoneId: "Z1234567890ABC"
+  domainName: "example.com"
+
+argoRollouts:
+  enabled: true
+  trafficRouting: alb

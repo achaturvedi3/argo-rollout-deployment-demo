@@ -1,0 +1,125 @@
+# Development Environment Configuration
+namespace: development
+
+image:
+  repository: 123456789012.dkr.ecr.us-east-1.amazonaws.com/canary-demo
+  tag: "dev-latest"
+  pullPolicy: Always
+
+rollout:
+  replicas: 1
+  resources:
+    requests:
+      memory: "32Mi"
+      cpu: "50m"
+    limits:
+      memory: "64Mi"
+      cpu: "100m"
+  strategy:
+    canary:
+      steps:
+        - setWeight: 50
+          pause:
+            duration: 10s
+        - setWeight: 100
+          pause:
+            duration: 5s
+      autoPromotionEnabled: true
+      autoPromotionSeconds: 5
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+  hosts:
+    - host: dev-canary.internal.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+aws:
+  region: us-east-1
+  vpc:
+    subnets: "subnet-dev-1,subnet-dev-2"
+
+externalDns:
+  enabled: true
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: dev-canary.internal.example.com
+
+route53:
+  hostedZoneId: "Z9876543210DEV"
+  domainName: "internal.example.com"
+
+argoRollouts:
+  trafficRouting: alb
+
+---
+# Staging Environment Configuration
+namespace: staging
+
+image:
+  repository: 123456789012.dkr.ecr.us-east-1.amazonaws.com/canary-demo
+  tag: "staging-v1.2.0"
+  pullPolicy: Always
+
+rollout:
+  replicas: 2
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "100m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+  strategy:
+    canary:
+      steps:
+        - setWeight: 25
+          pause:
+            duration: 1m
+        - setWeight: 50
+          pause:
+            duration: 2m
+        - setWeight: 100
+          pause:
+            duration: 30s
+      autoPromotionEnabled: true
+      autoPromotionSeconds: 30
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+  hosts:
+    - host: staging-canary.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+aws:
+  region: us-east-1
+  vpc:
+    subnets: "subnet-staging-1,subnet-staging-2"
+  certificate:
+    arn: "arn:aws:acm:us-east-1:123456789012:certificate/staging-cert-id"
+
+externalDns:
+  enabled: true
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: staging-canary.example.com
+
+route53:
+  hostedZoneId: "Z5432109876STG"
+  domainName: "example.com"
+
+argoRollouts:
+  trafficRouting: alb
+
+nodeSelector:
+  environment: staging
