@@ -49,6 +49,8 @@ jobs:
       - name: Update Kubernetes manifests
         run: |
           # Update the rollout.yaml with the new image
+          # Note: Using sed for simplicity in demo. For production, consider using
+          # tools like kustomize, yq, or helm for more robust manifest management.
           sed -i "s|IMAGE_PLACEHOLDER|${{ steps.image-tag.outputs.full-image }}|g" k8s/rollout.yaml
           
           echo "Updated rollout.yaml with image: ${{ steps.image-tag.outputs.full-image }}"
@@ -96,6 +98,8 @@ jobs:
           ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN }}
         run: |
           # Login to ArgoCD (using auth token)
+          # Note: --insecure flag is used for demo/development. For production,
+          # configure proper TLS certificates for your ArgoCD server.
           argocd login $ARGOCD_SERVER --auth-token $ARGOCD_AUTH_TOKEN --grpc-web --insecure
           
           # Sync the application

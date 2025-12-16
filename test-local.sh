@@ -5,6 +5,20 @@
 
 set -e
 
+# Cleanup function
+cleanup() {
+    echo ""
+    echo "Cleaning up..."
+    if docker ps -a | grep -q nginx-rollout-demo-test; then
+        docker stop nginx-rollout-demo-test 2>/dev/null || true
+        docker rm nginx-rollout-demo-test 2>/dev/null || true
+        echo "✅ Cleanup complete"
+    fi
+}
+
+# Trap to ensure cleanup on exit or interruption
+trap cleanup EXIT INT TERM
+
 echo "=================================="
 echo "Argo Rollout Demo - Local Testing"
 echo "=================================="
@@ -53,8 +67,6 @@ if curl -s http://localhost:8080/health | grep -q "healthy"; then
 else
     echo "❌ Health check failed"
     docker logs nginx-rollout-demo-test
-    docker stop nginx-rollout-demo-test
-    docker rm nginx-rollout-demo-test
     exit 1
 fi
 
@@ -88,15 +100,6 @@ echo ""
 echo "Press Ctrl+C to stop and cleanup, or leave running to test in browser."
 echo ""
 
-# Option to cleanup
-read -p "Do you want to cleanup now? (y/N) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Cleaning up..."
-    docker stop nginx-rollout-demo-test
-    docker rm nginx-rollout-demo-test
-    echo "✅ Cleanup complete"
-else
-    echo "Container left running. Access at http://localhost:8080"
-    echo "Run 'docker stop nginx-rollout-demo-test && docker rm nginx-rollout-demo-test' to cleanup later."
-fi
+# Keep script running until interrupted
+echo "Press any key to cleanup and exit..."
+read -n 1 -s

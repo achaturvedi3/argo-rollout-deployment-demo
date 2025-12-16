@@ -14,6 +14,15 @@ spec:
       labels:
         app: nginx-rollout-demo
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: nginx-rollout-demo
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: nginx
         image: IMAGE_PLACEHOLDER
@@ -57,12 +66,3 @@ spec:
       maxUnavailable: 0
       # Maximum number of pods that can be scheduled above desired number
       maxSurge: 1
-      # Anti-affinity to ensure pods are distributed
-      antiAffinity:
-        preferredDuringSchedulingIgnoredDuringExecution:
-          weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                app: nginx-rollout-demo
-            topologyKey: kubernetes.io/hostname
