@@ -33,3 +33,6 @@ Thumbs.db
 # Secrets (just in case)
 *secret*.yaml
 *credentials*.yaml
+
+# Configuration files
+config.env
