@@ -1,0 +1,219 @@
+# Default values for canary-demo
+# This is a YAML-formatted file.
+
+# Application name and namespace
+nameOverride: ""
+fullnameOverride: ""
+
+namespace: default
+
+# Image configuration
+image:
+  repository: REGISTRY_URL/canary-demo
+  pullPolicy: Always
+  tag: "latest"
+
+imagePullSecrets: []
+
+# Rollout configuration
+rollout:
+  enabled: true
+  replicas: 3
+  revisionHistoryLimit: 2
+  
+  # Container resources
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "100m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+  
+  # Health checks
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 80
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 80
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  # Canary strategy configuration
+  strategy:
+    canary:
+      steps:
+        - setWeight: 10
+          pause:
+            duration: 30s
+        - setWeight: 30
+          pause:
+            duration: 30s
+        - setWeight: 60
+          pause:
+            duration: 30s
+        - setWeight: 100
+          pause:
+            duration: 10s
+      
+      autoPromotionEnabled: true
+      autoPromotionSeconds: 10
+      abortScaleDownDelaySeconds: 30
+      scaleDownDelaySeconds: 30
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: http
+  protocol: TCP
+
+# AWS Load Balancer Controller configuration
+ingress:
+  enabled: true
+  className: alb
+  
+  # AWS ALB annotations
+  annotations:
+    # Required for AWS Load Balancer Controller
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
+    
+    # SSL/TLS Configuration
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    # alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:REGION:ACCOUNT_ID:certificate/CERTIFICATE_ID"
+    
+    # Load balancer attributes
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=60
+    
+    # WAF configuration (optional)
+    # alb.ingress.kubernetes.io/wafv2-acl-arn: "arn:aws:wafv2:REGION:ACCOUNT_ID:regional/webacl/NAME/ID"
+    
+    # Tags for cost allocation
+    alb.ingress.kubernetes.io/tags: Environment=production,Application=canary-demo,ManagedBy=helm
+    
+    # Group multiple ingresses to share single ALB (optional)
+    # alb.ingress.kubernetes.io/group.name: "shared-alb"
+    # alb.ingress.kubernetes.io/group.order: "10"
+  
+  # Host configuration
+  hosts:
+    - host: canary-demo.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  
+  # TLS configuration
+  tls: []
+  #  - secretName: canary-demo-tls
+  #    hosts:
+  #      - canary-demo.example.com
+
+# External DNS configuration
+externalDns:
+  enabled: true
+  # Annotations for External DNS
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: canary-demo.example.com
+    external-dns.alpha.kubernetes.io/ttl: "300"
+    # Use this if you want to create alias record instead of CNAME
+    # external-dns.alpha.kubernetes.io/alias: "true"
+
+# AWS Configuration
+aws:
+  # AWS Region
+  region: us-east-1
+  
+  # VPC Configuration
+  vpc:
+    # Subnet IDs for ALB (must be at least 2 subnets in different AZs)
+    subnets: ""  # Comma-separated subnet IDs or leave empty for auto-discovery
+    # Example: "subnet-12345678,subnet-87654321"
+  
+  # ACM Certificate ARN for HTTPS
+  certificate:
+    arn: ""
+    # Example: "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+  
+  # WAF WebACL ARN (optional)
+  waf:
+    enabled: false
+    arn: ""
+    # Example: "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/example/a1234567-b890-1234-5678-901234567890"
+
+# Route53 Configuration for External DNS
+route53:
+  # Hosted Zone ID
+  hostedZoneId: ""
+  # Domain name
+  domainName: "example.com"
+  # DNS record TTL
+  ttl: 300
+
+# Pod Security Context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  fsGroup: 101
+
+# Security Context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+    add:
+      - NET_BIND_SERVICE
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity rules
+affinity: {}
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod labels
+podLabels: {}
+
+# Enable Argo Rollouts specific features
+argoRollouts:
+  enabled: true
+  # Traffic routing method: alb or nginx
+  trafficRouting: alb
+
+# Monitoring and observability
+monitoring:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s

@@ -1,0 +1,14 @@
+apiVersion: v2
+name: canary-demo
+description: A Helm chart for NGINX canary deployment with Argo Rollouts, AWS Load Balancer Controller, and External DNS
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - nginx
+  - canary
+  - argo-rollouts
+  - aws-alb
+  - external-dns
+maintainers:
+  - name: Arvind Chaturvedi

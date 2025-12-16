@@ -1,0 +1,97 @@
+{{- if .Values.rollout.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ include "canary-demo.fullname" . }}-rollout
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "canary-demo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.rollout.replicas }}
+  revisionHistoryLimit: {{ .Values.rollout.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "canary-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "canary-demo.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "canary-demo.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: nginx
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        resources:
+          {{- toYaml .Values.rollout.resources | nindent 10 }}
+        livenessProbe:
+          {{- toYaml .Values.rollout.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.rollout.readinessProbe | nindent 10 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  strategy:
+    canary:
+      # Reference to stable and canary services
+      stableService: {{ include "canary-demo.stableServiceName" . }}
+      canaryService: {{ include "canary-demo.canaryServiceName" . }}
+      {{- if eq .Values.argoRollouts.trafficRouting "alb" }}
+      # Traffic routing for AWS ALB
+      trafficRouting:
+        alb:
+          ingress: {{ include "canary-demo.ingressName" . }}
+          servicePort: {{ .Values.service.port }}
+          rootService: {{ include "canary-demo.rootServiceName" . }}
+      {{- else if eq .Values.argoRollouts.trafficRouting "nginx" }}
+      # Traffic routing for NGINX Ingress
+      trafficRouting:
+        nginx:
+          stableIngress: {{ include "canary-demo.ingressName" . }}
+      {{- end }}
+      # Canary deployment steps
+      steps:
+      {{- range .Values.rollout.strategy.canary.steps }}
+      - setWeight: {{ .setWeight }}
+        {{- if .pause }}
+        pause:
+          {{- if .pause.duration }}
+          duration: {{ .pause.duration }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      # Analysis and auto-promotion configuration
+      autoPromotionEnabled: {{ .Values.rollout.strategy.canary.autoPromotionEnabled }}
+      autoPromotionSeconds: {{ .Values.rollout.strategy.canary.autoPromotionSeconds }}
+      # Rollback on failure
+      abortScaleDownDelaySeconds: {{ .Values.rollout.strategy.canary.abortScaleDownDelaySeconds }}
+      scaleDownDelaySeconds: {{ .Values.rollout.strategy.canary.scaleDownDelaySeconds }}
+{{- end }}
