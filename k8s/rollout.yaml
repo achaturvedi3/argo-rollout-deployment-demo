@@ -1,0 +1,81 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: canary-demo-rollout
+  namespace: default
+spec:
+  replicas: 3
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: canary-demo
+  template:
+    metadata:
+      labels:
+        app: canary-demo
+    spec:
+      containers:
+      - name: nginx
+        image: REGISTRY_URL/canary-demo:latest  # This will be updated by CI/CD
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+  strategy:
+    canary:
+      # Reference to stable and canary services
+      stableService: canary-demo-stable
+      canaryService: canary-demo-canary
+      # Traffic routing configuration
+      trafficRouting:
+        nginx:
+          stableIngress: canary-demo-ingress
+      # Canary deployment steps
+      steps:
+      # Step 1: Route 10% of traffic to canary
+      - setWeight: 10
+      - pause: {duration: 30s}
+      
+      # Step 2: Route 30% of traffic to canary
+      - setWeight: 30
+      - pause: {duration: 30s}
+      
+      # Step 3: Route 60% of traffic to canary
+      - setWeight: 60
+      - pause: {duration: 30s}
+      
+      # Step 4: Route 100% of traffic to canary (full promotion)
+      - setWeight: 100
+      - pause: {duration: 10s}
+      
+      # Analysis and auto-promotion configuration
+      autoPromotionEnabled: true
+      autoPromotionSeconds: 10
+      
+      # Rollback on failure
+      abortScaleDownDelaySeconds: 30
+      scaleDownDelaySeconds: 30

@@ -1,0 +1,35 @@
+# Artifacts
+artifacts/
+*.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Temporary files
+/tmp/
+*.tmp
+*.log
+
+# Docker
+*.tar
+
+# Kubernetes
+*.kubeconfig
+
+# Secrets (just in case)
+*secret*.yaml
+*credentials*.yaml
