@@ -1,0 +1,214 @@
+name: CD - Deploy with ArgoCD
+
+on:
+  workflow_run:
+    workflows: ["CI - Build and Push Docker Image"]
+    types:
+      - completed
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      image-tag:
+        description: 'Docker image tag to deploy'
+        required: true
+        default: 'latest'
+      version:
+        description: 'Application version (e.g., v1, v2, v3)'
+        required: false
+        default: 'v1'
+
+env:
+  ARGOCD_SERVER: argocd-server.argocd.svc.cluster.local
+  ARGOCD_APP_NAME: canary-demo
+  ARGOCD_NAMESPACE: argocd
+  K8S_NAMESPACE: default
+
+jobs:
+  deploy:
+    name: Deploy to EKS with ArgoCD
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    permissions:
+      contents: write
+      packages: read
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      
+      - name: Download CI artifacts
+        if: github.event_name == 'workflow_run'
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: ci.yml
+          name: image-metadata
+          path: artifacts/
+          run_id: ${{ github.event.workflow_run.id }}
+      
+      - name: Set image tag from artifact or input
+        id: image-tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            IMAGE_TAG="${{ github.event.inputs.image-tag }}"
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            IMAGE_TAG=$(cat artifacts/image-tags.txt | head -1)
+            VERSION=$(cat artifacts/version.txt)
+          fi
+          
+          echo "image-tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Deploying image: ${IMAGE_TAG}"
+          echo "Application version: ${VERSION}"
+      
+      # Configure AWS credentials for EKS access
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.28.0'
+      
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o /tmp/argocd https://github.com/argoproj/argocd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 555 /tmp/argocd /usr/local/bin/argocd
+          argocd version --client
+      
+      - name: Update kubeconfig for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ secrets.AWS_REGION }} \
+            --name ${{ secrets.EKS_CLUSTER_NAME }}
+          
+          kubectl cluster-info
+          kubectl get nodes
+      
+      - name: Update Rollout manifest with new image
+        run: |
+          IMAGE_TAG="${{ steps.image-tag.outputs.image-tag }}"
+          
+          # Update the image in rollout.yaml
+          sed -i "s|image: .*|image: ${IMAGE_TAG}|g" k8s/rollout.yaml
+          
+          echo "Updated rollout.yaml with image: ${IMAGE_TAG}"
+          cat k8s/rollout.yaml | grep "image:"
+      
+      - name: Commit and push manifest changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          git add k8s/rollout.yaml
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update image to ${{ steps.image-tag.outputs.image-tag }}"
+            git push
+          fi
+      
+      - name: Login to ArgoCD
+        run: |
+          # Get ArgoCD admin password from Kubernetes secret
+          ARGOCD_PASSWORD=$(kubectl -n ${{ env.ARGOCD_NAMESPACE }} get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+          
+          # Port-forward to ArgoCD server (in background)
+          kubectl port-forward -n ${{ env.ARGOCD_NAMESPACE }} svc/argocd-server 8080:443 &
+          sleep 5
+          
+          # Login to ArgoCD
+          argocd login localhost:8080 \
+            --username admin \
+            --password "${ARGOCD_PASSWORD}" \
+            --insecure
+      
+      - name: Sync ArgoCD application
+        run: |
+          # Check if application exists
+          if argocd app get ${{ env.ARGOCD_APP_NAME }} &>/dev/null; then
+            echo "Application exists, syncing..."
+          else
+            echo "Application doesn't exist, creating..."
+            kubectl apply -f argocd/application.yaml
+            sleep 10
+          fi
+          
+          # Sync the application
+          argocd app sync ${{ env.ARGOCD_APP_NAME }} \
+            --prune \
+            --timeout 600
+          
+          # Wait for sync to complete
+          argocd app wait ${{ env.ARGOCD_APP_NAME }} \
+            --health \
+            --timeout 600
+      
+      - name: Monitor Rollout Progress
+        run: |
+          echo "Monitoring Argo Rollout progress..."
+          
+          # Install kubectl-argo-rollouts plugin
+          curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+          chmod +x kubectl-argo-rollouts-linux-amd64
+          sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+          
+          # Get rollout status
+          kubectl argo rollouts get rollout canary-demo-rollout -n ${{ env.K8S_NAMESPACE }} --watch --timeout 10m
+      
+      - name: Verify Deployment
+        run: |
+          echo "Verifying deployment..."
+          
+          # Check rollout status
+          kubectl argo rollouts status canary-demo-rollout -n ${{ env.K8S_NAMESPACE }}
+          
+          # Get pods
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=canary-demo
+          
+          # Get services
+          kubectl get svc -n ${{ env.K8S_NAMESPACE }} -l app=canary-demo
+          
+          # Get ingress
+          kubectl get ingress -n ${{ env.K8S_NAMESPACE }}
+      
+      - name: Get Application URL
+        run: |
+          echo "Application endpoints:"
+          
+          # Get LoadBalancer endpoint if available
+          LB_ENDPOINT=$(kubectl get svc canary-demo-root -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
+          
+          # Get Ingress endpoint
+          INGRESS_ENDPOINT=$(kubectl get ingress canary-demo-ingress -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.spec.rules[0].host}' 2>/dev/null || echo "not-configured")
+          
+          echo "LoadBalancer: http://${LB_ENDPOINT}"
+          echo "Ingress: http://${INGRESS_ENDPOINT}"
+          
+          echo "lb-endpoint=${LB_ENDPOINT}" >> $GITHUB_OUTPUT
+          echo "ingress-endpoint=${INGRESS_ENDPOINT}" >> $GITHUB_OUTPUT
+      
+      - name: Deployment Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Tag:** ${{ steps.image-tag.outputs.image-tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.image-tag.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**ArgoCD App:** ${{ env.ARGOCD_APP_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Namespace:** ${{ env.K8S_NAMESPACE }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Rollout Status" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          kubectl argo rollouts status canary-demo-rollout -n ${{ env.K8S_NAMESPACE }} >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

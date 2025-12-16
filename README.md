@@ -1,409 +1,581 @@
-# Argo Rollout Deployment Demo
+# Argo Rollouts Canary Deployment Demo 🚀
 
-A complete demonstration of canary deployments using Argo Rollouts, ArgoCD, and GitHub Actions on AWS EKS.
-
-## 🚀 Overview
-
-This repository showcases a production-ready CI/CD pipeline that implements:
-- **Nginx-based web application** with visual canary deployment tracking
-- **Automated CI pipeline** for building and pushing Docker images
-- **Automated CD pipeline** using ArgoCD for GitOps-based deployments
-- **Canary deployment strategy** with Argo Rollouts on AWS EKS
-- **Progressive traffic shifting** (20% → 40% → 60% → 80% → 100%)
+A complete production-ready demonstration of canary deployments using Argo Rollouts, ArgoCD, NGINX, and AWS EKS with fully automated CI/CD pipelines.
 
 ## 📋 Table of Contents
 
+- [Overview](#overview)
 - [Architecture](#architecture)
+- [Features](#features)
 - [Prerequisites](#prerequisites)
-- [Setup Instructions](#setup-instructions)
+- [Repository Structure](#repository-structure)
+- [Quick Start](#quick-start)
+- [How It Works](#how-it-works)
 - [CI/CD Pipeline](#cicd-pipeline)
-- [Canary Deployment](#canary-deployment)
-- [Monitoring Deployments](#monitoring-deployments)
+- [Observing Canary Deployments](#observing-canary-deployments)
+- [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
+- [Advanced Usage](#advanced-usage)
+
+## 🎯 Overview
+
+This project demonstrates a complete canary deployment strategy using:
+
+- **Application**: Simple NGINX-based web application with visual version indicators
+- **Container Registry**: Docker Hub (configurable for AWS ECR)
+- **Kubernetes**: AWS EKS cluster
+- **Deployment**: Argo Rollouts for progressive delivery
+- **GitOps**: ArgoCD for continuous deployment
+- **CI/CD**: GitHub Actions for automated build and deployment
+
+The application displays different colored pages for each version (v1, v2, v3, v4), making it easy to observe traffic splitting during canary rollouts.
 
 ## 🏗️ Architecture
 
 ```
-GitHub Repository
-    ↓
-CI Pipeline (GitHub Actions)
-    ↓
-Build Docker Image → Push to Docker Hub
-    ↓
-CD Pipeline (GitHub Actions)
-    ↓
-Update K8s Manifests → Trigger ArgoCD Sync
-    ↓
-ArgoCD (on EKS)
-    ↓
-Argo Rollouts Controller
-    ↓
-Progressive Canary Deployment (20% → 40% → 60% → 80% → 100%)
-    ↓
-AWS EKS Cluster
+┌─────────────────┐
+│  GitHub Repo    │
+│  (Source Code)  │
+└────────┬────────┘
+         │
+         │ Push to main/develop
+         ↓
+┌─────────────────┐
+│   CI Pipeline   │
+│ (GitHub Actions)│
+├─────────────────┤
+│ 1. Build Image  │
+│ 2. Tag Version  │
+│ 3. Push to ECR  │
+└────────┬────────┘
+         │
+         │ Trigger CD
+         ↓
+┌─────────────────┐
+│   CD Pipeline   │
+│ (GitHub Actions)│
+├─────────────────┤
+│ 1. Update K8s   │
+│ 2. ArgoCD Sync  │
+│ 3. Monitor      │
+└────────┬────────┘
+         │
+         ↓
+┌─────────────────────────────────┐
+│         AWS EKS Cluster         │
+├─────────────────────────────────┤
+│  ┌──────────┐   ┌────────────┐ │
+│  │  ArgoCD  │   │   Argo     │ │
+│  │          │   │  Rollouts  │ │
+│  └──────────┘   └────────────┘ │
+│                                 │
+│  ┌──────────────────────────┐  │
+│  │    Canary Rollout        │  │
+│  ├──────────────────────────┤  │
+│  │ Stable:  ████████  80%   │  │
+│  │ Canary:  ██        20%   │  │
+│  └──────────────────────────┘  │
+│                                 │
+│  ┌────────┐     ┌────────┐     │
+│  │ Stable │────▶│ Canary │     │
+│  │ Service│     │Service │     │
+│  └────────┘     └────────┘     │
+└─────────────────────────────────┘
+         │
+         ↓
+┌─────────────────┐
+│  NGINX Ingress  │
+│  (Traffic Split)│
+└────────┬────────┘
+         │
+         ↓
+┌─────────────────┐
+│   End Users     │
+│   (Browser)     │
+└─────────────────┘
 ```
+
+## ✨ Features
+
+### Application
+- ✅ Visual version indicators with distinct colors
+- ✅ Real-time traffic distribution information
+- ✅ Responsive design
+- ✅ Health check endpoints
+- ✅ Cache-busting for instant updates
+
+### Deployment Strategy
+- ✅ Progressive canary rollout (10% → 30% → 60% → 100%)
+- ✅ Automated promotion
+- ✅ Rollback on failure
+- ✅ Traffic weight-based routing
+- ✅ Zero-downtime deployments
+
+### CI/CD
+- ✅ Fully automated CI pipeline
+- ✅ Separate CD pipeline
+- ✅ Multi-arch Docker builds (amd64/arm64)
+- ✅ Semantic versioning support
+- ✅ Build provenance attestation
+- ✅ Artifact management
 
 ## 📦 Prerequisites
 
-### AWS Resources
-- **AWS EKS Cluster** (recommended: 2-3 worker nodes, t3.medium or larger)
-- **AWS CLI** configured with appropriate credentials
-- **kubectl** configured to access your EKS cluster
+### Infrastructure
+- AWS EKS cluster (running and accessible)
+- ArgoCD installed in the cluster (namespace: `argocd`)
+- Argo Rollouts controller installed
+- NGINX Ingress Controller installed
 
-### Kubernetes Components
-- **Argo Rollouts Controller** installed in the cluster
-- **ArgoCD** installed in the cluster
-- **AWS Load Balancer Controller** (optional, for Ingress)
+### Tools
+- `kubectl` configured for your EKS cluster
+- `aws-cli` configured with appropriate credentials
+- Docker Hub account (or AWS ECR repository)
 
 ### GitHub Secrets
 Configure the following secrets in your GitHub repository:
 
-| Secret Name | Description |
-|-------------|-------------|
-| `DOCKER_USERNAME` | Docker Hub username |
-| `DOCKER_PASSWORD` | Docker Hub password or access token |
-| `AWS_ACCESS_KEY_ID` | AWS access key for EKS access |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key for EKS access |
-| `ARGOCD_SERVER` | ArgoCD server URL (e.g., `argocd.example.com`) |
-| `ARGOCD_AUTH_TOKEN` | ArgoCD authentication token |
-
-## 🛠️ Setup Instructions
-
-### 1. Create EKS Cluster
-
 ```bash
-# Create EKS cluster using eksctl
-eksctl create cluster \
-  --name argo-demo-cluster \
-  --region us-east-1 \
-  --nodegroup-name standard-workers \
-  --node-type t3.medium \
-  --nodes 3 \
-  --nodes-min 1 \
-  --nodes-max 4 \
-  --managed
-
-# Configure kubectl
-aws eks update-kubeconfig --name argo-demo-cluster --region us-east-1
+DOCKER_USERNAME          # Docker Hub username
+DOCKER_PASSWORD          # Docker Hub password/token
+AWS_ROLE_TO_ASSUME      # AWS IAM role ARN for GitHub OIDC
+AWS_REGION              # AWS region (e.g., us-east-1)
+EKS_CLUSTER_NAME        # Name of your EKS cluster
 ```
 
-### 2. Install Argo Rollouts
+## 📁 Repository Structure
 
-```bash
-# Create namespace
-kubectl create namespace argo-rollouts
-
-# Install Argo Rollouts
-kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
-
-# Install Argo Rollouts kubectl plugin
-curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
-chmod +x kubectl-argo-rollouts-linux-amd64
-sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
-
-# Verify installation
-kubectl argo rollouts version
+```
+.
+├── app/
+│   ├── Dockerfile           # Container image definition
+│   ├── index.html          # Application HTML page
+│   └── nginx.conf          # NGINX configuration
+├── k8s/
+│   ├── rollout.yaml        # Argo Rollout manifest
+│   ├── service.yaml        # Kubernetes services (stable + canary)
+│   └── ingress.yaml        # Ingress configuration
+├── argocd/
+│   └── application.yaml    # ArgoCD Application manifest
+├── .github/
+│   └── workflows/
+│       ├── ci.yml          # CI pipeline
+│       └── cd.yml          # CD pipeline
+└── README.md
 ```
 
-### 3. Install ArgoCD
+## 🚀 Quick Start
+
+### 1. Fork and Clone Repository
 
 ```bash
-# Create namespace
-kubectl create namespace argocd
-
-# Install ArgoCD
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-
-# Wait for ArgoCD to be ready
-kubectl wait --for=condition=available --timeout=600s deployment/argocd-server -n argocd
-
-# Expose ArgoCD server (for external access)
-kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
-
-# Get ArgoCD admin password
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
-
-# Get ArgoCD server URL
-kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+git clone https://github.com/YOUR_USERNAME/argo-rollout-deployment-demo.git
+cd argo-rollout-deployment-demo
 ```
 
-### 4. Configure ArgoCD
+### 2. Configure Secrets
 
-```bash
-# Login to ArgoCD CLI
-argocd login <ARGOCD_SERVER> --username admin --password <PASSWORD>
+Add the required GitHub secrets via Settings → Secrets and variables → Actions.
 
-# Create ArgoCD application
-kubectl apply -f argocd/application.yaml
+### 3. Update Configuration
 
-# Generate auth token for GitHub Actions
-argocd account generate-token --account admin
-```
+Edit the following files with your specific values:
 
-### 5. Configure GitHub Secrets
-
-1. Go to your GitHub repository → Settings → Secrets and variables → Actions
-2. Add all the required secrets listed in the [Prerequisites](#prerequisites) section
-
-### 6. Deploy the Application
-
-```bash
-# Simply push to main branch to trigger CI/CD pipeline
-git add .
-git commit -m "Initial deployment"
-git push origin main
-
-# Or manually apply the manifests
-kubectl apply -f k8s/
-```
-
-## 🔄 CI/CD Pipeline
-
-### CI Pipeline (`ci.yaml`)
-Triggers on push to `main` branch when these files change:
-- `index.html`
-- `Dockerfile`
-- `.github/workflows/ci.yaml`
-
-**Steps:**
-1. Checkout code
-2. Set up Docker Buildx
-3. Login to Docker Hub
-4. Generate version tag (based on git SHA)
-5. Build Docker image with version
-6. Push to Docker Hub
-7. Trigger CD pipeline
-
-### CD Pipeline (`cd.yaml`)
-Triggers automatically after successful CI pipeline
-
-**Steps:**
-1. Get latest image tag
-2. Update Kubernetes manifests with new image
-3. Configure AWS credentials
-4. Update kubeconfig for EKS access
-5. Commit updated manifests to Git
-6. Login to ArgoCD
-7. Sync ArgoCD application
-8. Monitor rollout status
-
-## 🐤 Canary Deployment
-
-The Argo Rollout strategy implements a progressive canary deployment:
-
+**k8s/rollout.yaml**:
 ```yaml
-steps:
-  - setWeight: 20   # 20% traffic to new version
-  - pause: {duration: 30s}
-  - setWeight: 40   # 40% traffic to new version
-  - pause: {duration: 30s}
-  - setWeight: 60   # 60% traffic to new version
-  - pause: {duration: 30s}
-  - setWeight: 80   # 80% traffic to new version
-  - pause: {duration: 30s}
-  - setWeight: 100  # 100% traffic to new version
+image: YOUR_DOCKER_USERNAME/canary-demo:latest
 ```
 
-### How to Test Canary Deployment
-
-1. **Deploy initial version:**
-   ```bash
-   # Version will be automatically set from CI pipeline
-   git push origin main
-   ```
-
-2. **Make a change to trigger new version:**
-   ```bash
-   # Edit index.html with a new message
-   git add index.html
-   git commit -m "Update to v1.0.1"
-   git push origin main
-   ```
-
-3. **Watch the rollout:**
-   ```bash
-   kubectl argo rollouts get rollout nginx-rollout-demo --watch
-   ```
-
-4. **Access the application:**
-   ```bash
-   # Get the service URL
-   kubectl get svc nginx-rollout-demo -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-   ```
-
-5. **During deployment, refresh the webpage multiple times** to see different versions based on traffic distribution
-
-## 📊 Monitoring Deployments
-
-### View Rollout Status
-
-```bash
-# Get rollout status
-kubectl argo rollouts get rollout nginx-rollout-demo
-
-# Watch rollout progress
-kubectl argo rollouts get rollout nginx-rollout-demo --watch
-
-# View rollout history
-kubectl argo rollouts history nginx-rollout-demo
+**k8s/ingress.yaml**:
+```yaml
+host: your-domain.example.com  # Your domain or use LoadBalancer IP
 ```
 
-### ArgoCD UI
-
-```bash
-# Access ArgoCD UI
-# Navigate to the LoadBalancer URL obtained during setup
-# Login with admin credentials
+**argocd/application.yaml**:
+```yaml
+repoURL: https://github.com/YOUR_USERNAME/argo-rollout-deployment-demo.git
 ```
 
-### Rollout Dashboard (Optional)
+### 4. Deploy ArgoCD Application
 
 ```bash
-# Install Argo Rollouts Dashboard
+kubectl apply -f argocd/application.yaml
+```
+
+### 5. Trigger First Deployment
+
+Push to main branch or manually trigger the CI workflow:
+
+```bash
+git commit --allow-empty -m "deploy: v1"
+git push origin main
+```
+
+### 6. Access the Application
+
+Get the application URL:
+
+```bash
+# Via LoadBalancer
+kubectl get svc canary-demo-root -n default
+
+# Via Ingress
+kubectl get ingress canary-demo-ingress -n default
+```
+
+## 🔄 How It Works
+
+### Traffic Splitting During Canary Rollout
+
+When a new version is deployed, Argo Rollouts progressively shifts traffic:
+
+1. **Initial State**: 100% traffic to stable (v1)
+2. **Step 1**: 10% to canary (v2), 90% to stable (v1) - pause 30s
+3. **Step 2**: 30% to canary (v2), 70% to stable (v1) - pause 30s
+4. **Step 3**: 60% to canary (v2), 40% to stable (v1) - pause 30s
+5. **Step 4**: 100% to canary (v2) - canary becomes stable
+
+```
+Time:     0s      30s     60s     90s     100s
+         ────────────────────────────────────────
+Stable:  ████████ ███████ ████    █       
+Canary:           █       ███     ██████  ████████
+Weight:  100%     90/10%  70/30%  40/60%  100%
+```
+
+### How Argo Rollouts Works
+
+1. **Rollout CRD**: Extends Kubernetes Deployment with progressive delivery capabilities
+2. **ReplicaSet Management**: Creates new ReplicaSet for canary while maintaining stable
+3. **Traffic Shaping**: Updates NGINX Ingress annotations to control traffic weights
+4. **Progressive Steps**: Follows defined steps with pauses and analysis
+5. **Auto-Promotion**: Automatically promotes canary to stable after all steps succeed
+6. **Rollback**: Can automatically rollback if analysis or health checks fail
+
+## 🔧 CI/CD Pipeline
+
+### CI Pipeline (`.github/workflows/ci.yml`)
+
+**Triggers**:
+- Push to `main` or `develop` branches
+- Manual workflow dispatch
+
+**Steps**:
+1. Checkout code
+2. Determine version from commit message or input
+3. Setup Docker Buildx
+4. Login to container registry
+5. Build multi-arch image (amd64/arm64)
+6. Tag with version and SHA
+7. Push to registry
+8. Generate provenance attestation
+9. Upload metadata artifacts
+
+**Version Detection**:
+- Manual: Via workflow dispatch input
+- Automatic: Extracted from commit message (e.g., `deploy: v2`)
+- Default: `v1`
+
+### CD Pipeline (`.github/workflows/cd.yml`)
+
+**Triggers**:
+- Successful completion of CI pipeline
+- Manual workflow dispatch
+
+**Steps**:
+1. Download CI artifacts
+2. Configure AWS credentials
+3. Setup kubectl and ArgoCD CLI
+4. Update kubeconfig for EKS
+5. Update rollout manifest with new image
+6. Commit and push changes
+7. Login to ArgoCD
+8. Sync ArgoCD application
+9. Monitor rollout progress
+10. Verify deployment
+11. Output application URLs
+
+### Pipeline Separation
+
+- **CI**: Builds and publishes artifacts (container images)
+- **CD**: Deploys artifacts to Kubernetes cluster
+- **Communication**: Via artifacts and workflow triggers
+- **Independence**: Each can be run separately
+
+## 👀 Observing Canary Deployments
+
+### Via Browser
+
+1. Open the application URL in your browser
+2. Note the current version and color
+3. Deploy a new version (e.g., v2)
+4. Refresh the page multiple times during rollout
+5. Observe different versions appearing based on traffic weight
+
+**Expected Behavior**:
+- At 10% canary: ~1 in 10 refreshes shows new version
+- At 30% canary: ~3 in 10 refreshes shows new version
+- At 60% canary: ~6 in 10 refreshes shows new version
+- At 100%: All refreshes show new version
+
+### Via kubectl
+
+```bash
+# Watch rollout status
+kubectl argo rollouts get rollout canary-demo-rollout -w
+
+# Check rollout status
+kubectl argo rollouts status canary-demo-rollout
+
+# List rollout history
+kubectl argo rollouts history canary-demo-rollout
+
+# Get detailed rollout info
+kubectl describe rollout canary-demo-rollout
+```
+
+### Via Argo Rollouts Dashboard
+
+```bash
+# Port forward to dashboard
 kubectl argo rollouts dashboard
 
 # Access at http://localhost:3100
 ```
 
-### Manually Control Rollout
+### Via ArgoCD UI
 
 ```bash
-# Promote rollout to next step
-kubectl argo rollouts promote nginx-rollout-demo
+# Port forward to ArgoCD
+kubectl port-forward svc/argocd-server -n argocd 8080:443
 
-# Abort rollout
-kubectl argo rollouts abort nginx-rollout-demo
-
-# Retry rollout
-kubectl argo rollouts retry nginx-rollout-demo
-
-# Rollback to previous version
-kubectl argo rollouts undo nginx-rollout-demo
+# Login at https://localhost:8080
+# Username: admin
+# Password: (get from secret)
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 ```
 
-## 🔍 Troubleshooting
+## ⚙️ Configuration
 
-### Pipeline Issues
+### Adjusting Canary Steps
 
-```bash
-# Check GitHub Actions logs
-# Go to Actions tab in GitHub repository
+Edit `k8s/rollout.yaml`:
 
-# Check if secrets are configured
-# Settings → Secrets and variables → Actions
+```yaml
+steps:
+- setWeight: 10    # Change traffic percentages
+- pause: {duration: 30s}  # Adjust pause duration
+- setWeight: 50
+- pause: {duration: 1m}
+- setWeight: 100
 ```
 
-### ArgoCD Issues
+### Changing Auto-Promotion
 
-```bash
-# Check ArgoCD application status
-argocd app get nginx-rollout-demo
-
-# Check ArgoCD application logs
-kubectl logs -n argocd deployment/argocd-server
-
-# Sync manually
-argocd app sync nginx-rollout-demo
+```yaml
+autoPromotionEnabled: true     # Enable/disable
+autoPromotionSeconds: 10       # Delay before promotion
 ```
 
-### Rollout Issues
+### Adding Analysis
+
+```yaml
+steps:
+- setWeight: 20
+- pause: {duration: 30s}
+- analysis:
+    templates:
+    - templateName: success-rate
+    args:
+    - name: service-name
+      value: canary-demo-canary
+```
+
+### Using AWS ECR Instead of Docker Hub
+
+1. Update `.github/workflows/ci.yml`:
+
+```yaml
+# Uncomment AWS ECR sections
+- name: Configure AWS credentials
+  uses: aws-actions/configure-aws-credentials@v4
+  with:
+    role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+    aws-region: ${{ env.AWS_REGION }}
+
+- name: Login to Amazon ECR
+  id: login-ecr
+  uses: aws-actions/amazon-ecr-login@v2
+```
+
+2. Update `ECR_REPOSITORY` environment variable
+3. Update image references in `k8s/rollout.yaml`
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### 1. Rollout Stuck in Progressing
 
 ```bash
 # Check rollout status
-kubectl argo rollouts get rollout nginx-rollout-demo
+kubectl argo rollouts get rollout canary-demo-rollout
 
-# Check rollout events
-kubectl describe rollout nginx-rollout-demo
+# Check pods
+kubectl get pods -l app=canary-demo
 
-# Check pod logs
-kubectl logs -l app=nginx-rollout-demo
-
-# Check replica sets
-kubectl get rs -l app=nginx-rollout-demo
+# Check events
+kubectl describe rollout canary-demo-rollout
 ```
 
-### Image Pull Issues
+#### 2. Traffic Not Splitting
 
 ```bash
-# Check if image exists in Docker Hub
-# Verify DOCKER_USERNAME and DOCKER_PASSWORD secrets
+# Check ingress annotations
+kubectl get ingress canary-demo-ingress-canary -o yaml
 
-# Check pod events
+# Verify NGINX ingress controller
+kubectl get pods -n ingress-nginx
+
+# Check service endpoints
+kubectl get endpoints -l app=canary-demo
+```
+
+#### 3. ArgoCD Sync Issues
+
+```bash
+# Check application status
+argocd app get canary-demo
+
+# Force sync
+argocd app sync canary-demo --force
+
+# Check ArgoCD logs
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-server
+```
+
+#### 4. Image Pull Errors
+
+```bash
+# Verify image exists
+docker pull YOUR_USERNAME/canary-demo:v1
+
+# Check image pull secrets
+kubectl get secrets
+
+# Verify registry credentials
 kubectl describe pod <pod-name>
 ```
 
-## 📁 Project Structure
+### Debugging Commands
 
+```bash
+# Get all resources
+kubectl get all -l app=canary-demo
+
+# Check rollout analysis
+kubectl argo rollouts get rollout canary-demo-rollout --watch
+
+# View rollout events
+kubectl get events --sort-by='.lastTimestamp' | grep canary-demo
+
+# Check ingress controller logs
+kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx
+
+# Test service connectivity
+kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- sh
+# curl http://canary-demo-stable
+# curl http://canary-demo-canary
 ```
-.
-├── .github/
-│   └── workflows/
-│       ├── ci.yaml              # CI pipeline for building Docker images
-│       └── cd.yaml              # CD pipeline for deploying to EKS
-├── argocd/
-│   └── application.yaml         # ArgoCD Application manifest
-├── k8s/
-│   ├── rollout.yaml            # Argo Rollout with canary strategy
-│   ├── service.yaml            # Kubernetes Service
-│   └── ingress.yaml            # Kubernetes Ingress (optional)
-├── Dockerfile                   # Multi-stage Docker build
-├── index.html                   # Nginx application with version display
-└── README.md                    # This file
+
+## 🚀 Advanced Usage
+
+### Manual Promotion
+
+```bash
+# Promote canary to stable
+kubectl argo rollouts promote canary-demo-rollout
 ```
 
-## 🎯 Key Features
+### Manual Rollback
 
-- ✅ **Progressive Canary Deployments** - Gradual traffic shifting with automatic rollback
-- ✅ **GitOps Workflow** - ArgoCD syncs from Git repository
-- ✅ **Automated CI/CD** - Fully automated from code commit to production
-- ✅ **Version Visualization** - Web UI clearly shows current version
-- ✅ **Health Checks** - Readiness and liveness probes
-- ✅ **Auto-scaling Ready** - Resource limits and requests configured
-- ✅ **AWS EKS Optimized** - Configured for EKS best practices
+```bash
+# Abort rollout
+kubectl argo rollouts abort canary-demo-rollout
 
-## 🔐 Security Considerations
+# Rollback to previous version
+kubectl argo rollouts undo canary-demo-rollout
+```
 
-- Store all sensitive data in GitHub Secrets
-- Use IAM roles for service accounts (IRSA) for production
-- Enable Pod Security Standards
-- Use private Docker registries for production
-- Implement network policies
-- Enable audit logging
+### Deploying Specific Versions
 
-## 📝 Version Management
+```bash
+# Via GitHub Actions
+gh workflow run ci.yml -f version=v3
 
-Versions are automatically generated using the format: `v1.0.<git-short-sha>`
+# Via kubectl
+kubectl argo rollouts set image canary-demo-rollout \
+  nginx=YOUR_USERNAME/canary-demo:v3
+```
 
-Example: `v1.0.abc1234`
+### Adding Metrics-Based Analysis
 
-This ensures unique versions for every deployment and easy tracking.
+Create an AnalysisTemplate:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+spec:
+  metrics:
+  - name: success-rate
+    interval: 1m
+    successCondition: result >= 0.95
+    provider:
+      prometheus:
+        address: http://prometheus:9090
+        query: |
+          sum(rate(http_requests_total{status=~"2.."}[5m]))
+          /
+          sum(rate(http_requests_total[5m]))
+```
+
+### Blue-Green Deployment
+
+Modify `k8s/rollout.yaml`:
+
+```yaml
+strategy:
+  blueGreen:
+    activeService: canary-demo-active
+    previewService: canary-demo-preview
+    autoPromotionEnabled: false
+```
+
+## 📚 Additional Resources
+
+- [Argo Rollouts Documentation](https://argoproj.github.io/argo-rollouts/)
+- [ArgoCD Documentation](https://argo-cd.readthedocs.io/)
+- [Kubernetes Canary Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#canary-pattern)
+- [NGINX Ingress Controller](https://kubernetes.github.io/ingress-nginx/)
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+Contributions are welcome! Please feel free to submit issues or pull requests.
 
 ## 📄 License
 
-This project is open-source and available under the MIT License.
+This project is licensed under the MIT License.
 
-## 🙏 Acknowledgments
+## 👏 Acknowledgments
 
-- [Argo Rollouts](https://argoproj.github.io/argo-rollouts/)
-- [Argo CD](https://argoproj.github.io/argo-cd/)
-- [AWS EKS](https://aws.amazon.com/eks/)
-- [GitHub Actions](https://github.com/features/actions)
-
-## 📧 Support
-
-For issues and questions:
-- Open an issue in this repository
-- Check the [troubleshooting](#troubleshooting) section
-- Review Argo Rollouts and ArgoCD documentation
+- Argo Project for Rollouts and ArgoCD
+- Kubernetes community
+- NGINX team
 
 ---
 
 **Happy Deploying! 🚀**
+
+For questions or issues, please open a GitHub issue.

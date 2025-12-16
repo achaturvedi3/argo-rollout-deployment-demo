@@ -1,27 +1,38 @@
-# Build artifacts
-*.log
-*.tmp
-dist/
-build/
+# Artifacts
+artifacts/
+*.txt
 
-# OS files
-.DS_Store
-Thumbs.db
-
-# IDE files
-.idea/
+# IDE
 .vscode/
+.idea/
 *.swp
 *.swo
 *~
 
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
 # Temporary files
 /tmp/
+*.tmp
+*.log
 
-# Environment files
-.env
-.env.local
+# Docker
+*.tar
 
-# Kubernetes secrets (if any)
-secrets.yaml
-*-secrets.yaml
+# Kubernetes
+*.kubeconfig
+
+# Secrets (just in case)
+*secret*.yaml
+*credentials*.yaml
+
+# Configuration files
+config.env

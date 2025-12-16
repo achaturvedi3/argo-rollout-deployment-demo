@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Argo Rollouts Canary Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 50px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 800px;
+            margin: 20px;
+        }
+        
+        .version-badge {
+            display: inline-block;
+            font-size: 72px;
+            font-weight: bold;
+            padding: 30px 60px;
+            border-radius: 15px;
+            margin: 30px 0;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .version-v1 {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .version-v2 {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        
+        .version-v3 {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+        
+        .version-v4 {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            color: white;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 42px;
+        }
+        
+        .traffic-info {
+            margin-top: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 5px solid #667eea;
+        }
+        
+        .traffic-info h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 24px;
+        }
+        
+        .traffic-info p {
+            color: #666;
+            line-height: 1.8;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+        
+        .metadata {
+            margin-top: 30px;
+            padding: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        .metadata-item {
+            margin: 8px 0;
+            color: #495057;
+        }
+        
+        .metadata-label {
+            font-weight: bold;
+            color: #212529;
+        }
+        
+        .refresh-hint {
+            margin-top: 25px;
+            padding: 15px;
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            color: #856404;
+            font-size: 14px;
+        }
+        
+        .strategy-badge {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Argo Rollouts Canary Demo</h1>
+        
+        <div class="version-badge VERSION_CLASS">
+            VERSION_NUMBER
+        </div>
+        
+        <div class="strategy-badge">CANARY DEPLOYMENT STRATEGY</div>
+        
+        <div class="traffic-info">
+            <h2>📊 Traffic Distribution Info</h2>
+            <p><strong>Current Version:</strong> VERSION_NUMBER</p>
+            <p>This request was served by the <strong>VERSION_TYPE</strong> version of the application.</p>
+            <p>During a canary rollout, traffic is gradually shifted from the stable version to the canary version.</p>
+            <p><strong>Typical Traffic Progression:</strong> Stable 100% → Canary 10% → 30% → 60% → 100%</p>
+        </div>
+        
+        <div class="metadata">
+            <div class="metadata-item">
+                <span class="metadata-label">Deployment Type:</span> Argo Rollouts
+            </div>
+            <div class="metadata-item">
+                <span class="metadata-label">Strategy:</span> Canary
+            </div>
+            <div class="metadata-item">
+                <span class="metadata-label">Version:</span> VERSION_NUMBER
+            </div>
+            <div class="metadata-item">
+                <span class="metadata-label">Build Time:</span> BUILD_TIME
+            </div>
+        </div>
+        
+        <div class="refresh-hint">
+            💡 <strong>Tip:</strong> Refresh this page multiple times during a rollout to observe traffic splitting between stable and canary versions!
+        </div>
+    </div>
+</body>
+</html>

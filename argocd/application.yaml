@@ -1,38 +1,44 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: nginx-rollout-demo
+  name: canary-demo
   namespace: argocd
-  # Add finalizer to ensure proper cleanup
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  # The project the application belongs to
   project: default
   
-  # Source of the application manifests
   source:
     repoURL: https://github.com/achaturvedi3/argo-rollout-deployment-demo.git
-    targetRevision: HEAD
+    targetRevision: main
     path: k8s
-    
-  # Destination cluster and namespace
+  
   destination:
     server: https://kubernetes.default.svc
     namespace: default
-    
-  # Sync policy
+  
   syncPolicy:
     automated:
-      prune: true    # Automatically delete resources that are no longer in Git
-      selfHeal: true # Automatically sync when the live cluster state deviates from Git
+      prune: true
+      selfHeal: true
       allowEmpty: false
     syncOptions:
-      - CreateNamespace=true
-      - PruneLast=true
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+    
     retry:
       limit: 5
       backoff:
         duration: 5s
         factor: 2
         maxDuration: 3m
+  
+  # Health assessment
+  health:
+    rules:
+    - selector:
+        kind: Rollout
+      healthChecks:
+      - type: progressing
+        timeout: 300
