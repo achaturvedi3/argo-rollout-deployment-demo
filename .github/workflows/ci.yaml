@@ -1,0 +1,83 @@
+name: CI - Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'index.html'
+      - 'Dockerfile'
+      - '.github/workflows/ci.yaml'
+
+env:
+  DOCKER_REGISTRY: docker.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      packages: write
+      
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=v1.0.,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+            
+      - name: Generate version tag
+        id: version
+        run: |
+          # Generate semantic version based on git sha
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          VERSION="v1.0.${SHORT_SHA}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Generated version: ${VERSION}"
+          
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Image digest
+        run: |
+          echo "Image pushed successfully!"
+          echo "Tags: ${{ steps.meta.outputs.tags }}"
+          echo "Version: ${{ steps.version.outputs.version }}"
+          
+      - name: Trigger CD pipeline
+        if: success()
+        run: |
+          echo "CI pipeline completed successfully"
+          echo "CD pipeline will be triggered automatically"
