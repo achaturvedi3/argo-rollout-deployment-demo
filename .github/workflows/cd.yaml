@@ -1,0 +1,126 @@
+name: CD - Deploy to EKS with ArgoCD
+
+on:
+  workflow_run:
+    workflows: ["CI - Build and Push Docker Image"]
+    types:
+      - completed
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: argo-demo-cluster
+
+jobs:
+  deploy:
+    name: Update Manifests and Sync ArgoCD
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Get latest image tag
+        id: image-tag
+        run: |
+          # Get the short SHA from the latest commit
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          IMAGE_TAG="sha-${SHORT_SHA}"
+          VERSION="v1.0.${SHORT_SHA}"
+          
+          # Construct full image name
+          FULL_IMAGE="${{ github.repository }}:${IMAGE_TAG}"
+          
+          echo "image-tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "full-image=${FULL_IMAGE}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          
+          echo "Image Tag: ${IMAGE_TAG}"
+          echo "Full Image: ${FULL_IMAGE}"
+          echo "Version: ${VERSION}"
+          
+      - name: Update Kubernetes manifests
+        run: |
+          # Update the rollout.yaml with the new image
+          sed -i "s|IMAGE_PLACEHOLDER|${{ steps.image-tag.outputs.full-image }}|g" k8s/rollout.yaml
+          
+          echo "Updated rollout.yaml with image: ${{ steps.image-tag.outputs.full-image }}"
+          cat k8s/rollout.yaml
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+          
+      - name: Install Argo CD CLI
+        run: |
+          # Download and install ArgoCD CLI
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/
+          argocd version --client
+          
+      - name: Commit and push manifest changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Add changes
+          git add k8s/rollout.yaml
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update image to ${{ steps.image-tag.outputs.full-image }}"
+            git push
+            echo "Manifest updated and pushed"
+          fi
+          
+      - name: Sync ArgoCD Application
+        env:
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+          ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+        run: |
+          # Login to ArgoCD (using auth token)
+          argocd login $ARGOCD_SERVER --auth-token $ARGOCD_AUTH_TOKEN --grpc-web --insecure
+          
+          # Sync the application
+          argocd app sync nginx-rollout-demo --grpc-web
+          
+          # Wait for sync to complete
+          argocd app wait nginx-rollout-demo --health --timeout 600 --grpc-web
+          
+          echo "ArgoCD sync completed successfully"
+          
+      - name: Get Rollout Status
+        run: |
+          # Install kubectl if not present
+          if ! command -v kubectl &> /dev/null; then
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            sudo mv kubectl /usr/local/bin/
+          fi
+          
+          # Install Argo Rollouts kubectl plugin
+          curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+          chmod +x kubectl-argo-rollouts-linux-amd64
+          sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+          
+          # Get rollout status
+          kubectl argo rollouts get rollout nginx-rollout-demo -n default
+          
+          echo "Deployment completed with version: ${{ steps.image-tag.outputs.version }}"

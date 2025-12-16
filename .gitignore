@@ -1,0 +1,27 @@
+# Build artifacts
+*.log
+*.tmp
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Temporary files
+/tmp/
+
+# Environment files
+.env
+.env.local
+
+# Kubernetes secrets (if any)
+secrets.yaml
+*-secrets.yaml
